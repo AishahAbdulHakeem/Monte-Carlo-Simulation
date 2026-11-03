@@ -2,7 +2,7 @@
 
 A Monte Carlo simulation that estimates how likely a project is to go over budget or over time, based on its risks.
 
-**Try it:** https://AishahAbdulHakeem.github.io/Monte-Carlo-Simulation
+**Try it:** https://AishahAbdulHakeem.github.io/Monte-Carlo-Simulation/app.html
 
 ## What it does
 
