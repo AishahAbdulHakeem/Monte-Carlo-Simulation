@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Project Risk Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: one working column. Inputs first (project, risk table), live results below, charts in plain language. */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --ink: #14213a;
+  --muted: #5a6579;
+  --line: #d8dde6;
+  --accent: #1f4e9c;
+  --accent-ink: #ffffff;
+  --bar: #4a6fa5;
+  --bad: #b83a2c;
+  --good: #2b7a58;
+  --warn: #c97a1f;
+  --invalid: #fdecea;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1320; --surface: #161d2d; --ink: #e8ecf4; --muted: #9aa5ba; --line: #2a3347;
+    --accent: #7fa6e8; --accent-ink: #0e1320; --bar: #6f94cc; --bad: #ee7b6c; --good: #5fbf93; --warn: #e5a057;
+    --invalid: #3a1f22; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1320; --surface: #161d2d; --ink: #e8ecf4; --muted: #9aa5ba; --line: #2a3347;
+  --accent: #7fa6e8; --accent-ink: #0e1320; --bar: #6f94cc; --bad: #ee7b6c; --good: #5fbf93; --warn: #e5a057;
+  --invalid: #3a1f22; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 36px; }
+h1 { font-size: clamp(26px, 5vw, 36px); line-height: 1.15; margin: 0 0 8px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 19px; margin: 0 0 4px; font-weight: 600; text-wrap: balance; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 62ch; }
+.sub { color: var(--muted); font-size: 14px; max-width: 70ch; }
+.eyebrow { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+section { display: flex; flex-direction: column; gap: 16px; }
+.settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; align-items: start; }
+label.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+label.field small { font-weight: 400; }
+input, select, button { font: inherit; color: inherit; }
+input[type="text"], input[type="number"], select {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; min-width: 0; width: 100%; color: var(--ink);
+}
+input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table.reg { border-collapse: collapse; width: 100%; min-width: 920px; }
+table.reg th, table.reg td { padding: 6px 6px; text-align: left; }
+table.reg thead th { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+table.reg thead tr.group th { text-align: center; border-bottom: 1px solid var(--line); letter-spacing: 0.06em; text-transform: uppercase; }
+table.reg thead tr.group th:first-child { border-bottom: none; }
+table.reg tbody tr + tr td { border-top: 1px solid var(--line); }
+table.reg td input { padding: 7px 8px; font-family: var(--font-num); font-size: 14px; }
+table.reg td.name input { font-family: var(--font-body); font-size: 14px; min-width: 250px; }
+table.reg tr.invalid td { background: var(--invalid); }
+.icon-btn { background: transparent; border: 1px solid transparent; color: var(--muted); border-radius: 6px; width: 32px; height: 32px; cursor: pointer; font-size: 18px; line-height: 1; }
+.icon-btn:hover { color: var(--bad); border-color: var(--line); }
+.row-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn { display: inline-block; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 9px 14px; cursor: pointer; font-weight: 500; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; padding: 11px 22px; }
+button.primary:hover { color: var(--accent-ink); filter: brightness(1.08); }
+.spacer { flex: 1 1 auto; }
+.msg { font-size: 14px; min-height: 1.4em; }
+.msg.err { color: var(--bad); font-weight: 500; }
+.msg.ok { color: var(--muted); }
+.divider { border: 0; border-top: 1px solid var(--line); margin: 0; }
+
+/* results */
+.headline { font-size: clamp(18px, 3vw, 22px); line-height: 1.4; max-width: 60ch; text-wrap: pretty; }
+.headline strong { font-weight: 700; }
+.hbars { display: flex; flex-direction: column; gap: 14px; max-width: 720px; }
+.hbar { display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: center; }
+.hbar .lbl { font-weight: 500; }
+.hbar .track { background: var(--line); border-radius: 4px; height: 30px; position: relative; overflow: hidden; }
+.hbar .fill { height: 100%; border-radius: 4px; min-width: 2px; }
+.hbar .val { position: absolute; inset: 0; display: flex; align-items: center; padding-left: 10px; font-family: var(--font-num); font-weight: 600; font-size: 14px; }
+.hbar .val.out { position: static; padding: 0; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; }
+.stat { padding: 14px 16px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 0 -1px -1px 0; min-width: 0; }
+.stat .k { font-size: 13px; color: var(--muted); }
+.stat .v { font-family: var(--font-num); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.stat .d { font-family: var(--font-num); font-size: 13px; color: var(--muted); }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+.chart h3 { font-size: 15px; margin: 0 0 2px; font-weight: 600; }
+.chart .how { font-size: 13px; color: var(--muted); margin-bottom: 8px; max-width: 52ch; }
+svg.sc { width: 100%; height: auto; display: block; overflow: visible; }
+svg.sc text { fill: var(--muted); font-family: var(--font-body); font-size: 12px; }
+svg.sc .grid { stroke: var(--line); stroke-width: 1; }
+svg.sc .curve { fill: none; stroke: var(--bar); stroke-width: 2.5; stroke-linejoin: round; }
+svg.sc .limit { stroke: var(--bad); stroke-width: 2; }
+svg.sc .dot { fill: var(--bad); }
+svg.sc text.ann { fill: var(--bad); font-weight: 600; font-size: 13px; }
+.tornado { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+.trow { display: grid; grid-template-columns: minmax(130px, 240px) 1fr; gap: 12px; align-items: center; }
+.trow .nm { font-size: 14px; }
+.trow .bw { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.trow .b { height: 22px; background: var(--bar); border-radius: 3px; min-width: 2px; }
+.trow .t { font-family: var(--font-num); font-size: 13px; white-space: nowrap; }
+.rtable { width: 100%; border-collapse: collapse; min-width: 640px; font-size: 14px; }
+.rtable th, .rtable td { padding: 9px 12px; text-align: right; border-top: 1px solid var(--line); }
+.rtable th:first-child, .rtable td:first-child { text-align: left; }
+.rtable thead th { border-top: none; font-size: 12px; color: var(--muted); font-weight: 600; }
+.rtable td.n { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+details { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 12px 16px; }
+details summary { cursor: pointer; font-weight: 600; }
+details ul { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--muted); }
+@media (max-width: 560px) {
+  .hbar { grid-template-columns: 1fr; gap: 6px; }
+  .trow { grid-template-columns: 1fr; gap: 4px; }
+}
+@media (prefers-reduced-motion: no-preference) { .hbar .fill { transition: width .4s ease; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Monte Carlo risk simulation</div>
+    <h1>Project Risk Simulator</h1>
+    <p class="lede">Enter your project's budget, deadline and risks. The simulator plays the project out 10,000 times and shows how often it goes over budget or over time.</p>
+  </header>
+
+  <section aria-labelledby="h-project">
+    <div>
+      <h2 id="h-project">1. Your project</h2>
+      <p class="sub">Change these to match any project. The example below is the Canvas data breach scenario.</p>
+    </div>
+    <div class="settings">
+      <label class="field" for="budget">Budget ($)
+        <input id="budget" type="text" inputmode="numeric" value="1,000,000" class="num">
+      </label>
+      <label class="field" for="deadline">Timeline (days)
+        <input id="deadline" type="text" inputmode="numeric" value="90" class="num">
+        <small>3 months is about 90 days</small>
+      </label>
+      <label class="field" for="basis">The chances in my table are
+        <select id="basis">
+          <option value="365" selected>per year (scale to my timeline)</option>
+          <option value="0">for this whole project (use as is)</option>
+        </select>
+      </label>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-risks">
+    <div>
+      <h2 id="h-risks">2. Your risks</h2>
+      <p class="sub">One row per risk. For each, enter how likely it is, and a low, most likely and high value for cost and for delay. You can type values like 310000, 310K or 2.1M.</p>
+    </div>
+    <div class="table-scroll">
+      <table class="reg" id="reg">
+        <thead>
+          <tr class="group"><th></th><th></th><th colspan="3">Cost if it happens ($)</th><th colspan="3">Delay if it happens (days)</th><th></th></tr>
+          <tr><th>Risk</th><th>Chance (%)</th><th>Low</th><th>Most likely</th><th>High</th><th>Low</th><th>Most likely</th><th>High</th><th><span class="sr" style="position:absolute;left:-9999px">Remove</span></th></tr>
+        </thead>
+        <tbody id="regbody"></tbody>
+      </table>
+    </div>
+    <div class="row-actions">
+      <button class="btn" id="add" type="button">Add a risk</button>
+      <button class="btn" id="example" type="button">Load Canvas example</button>
+      <button class="btn" id="clear" type="button">Clear table</button>
+      <label class="btn" for="file" style="cursor:pointer">Upload risk register (.xlsx or .csv)</label>
+      <input id="file" type="file" accept=".xlsx,.xls,.csv" style="position:absolute;left:-9999px">
+      <span class="spacer"></span>
+      <button class="btn primary" id="run" type="button">Run simulation</button>
+    </div>
+    <p class="msg ok" id="msg" role="status" aria-live="polite"></p>
+  </section>
+
+  <hr class="divider">
+
+  <section aria-labelledby="h-results" id="results" hidden>
+    <div>
+      <h2 id="h-results">3. Results</h2>
+    </div>
+    <p class="headline" id="headline"></p>
+    <div class="hbars" id="hbars"></div>
+    <div class="stats" id="stats"></div>
+
+    <div class="charts">
+      <div class="chart">
+        <h3>Cost: how likely is it to stay under each amount?</h3>
+        <p class="how" id="how-cost"></p>
+        <svg class="sc" id="sc-cost" viewBox="0 0 560 320" role="img" aria-label="Chance of staying under each cost"></svg>
+      </div>
+      <div class="chart">
+        <h3>Schedule: how likely is it to stay under each delay?</h3>
+        <p class="how" id="how-time"></p>
+        <svg class="sc" id="sc-time" viewBox="0 0 560 320" role="img" aria-label="Chance of staying under each delay"></svg>
+      </div>
+    </div>
+
+    <div>
+      <h3 style="font-size:15px;margin:0 0 2px;font-weight:600">Which risks add the most cost?</h3>
+      <p class="sub" style="margin-bottom:12px">Average cost each risk adds to a project. Fix the longest bars first.</p>
+      <div class="tornado" id="tornado"></div>
+    </div>
+
+    <div>
+      <h3 style="font-size:15px;margin:0 0 8px;font-weight:600">How often each risk happened</h3>
+      <div class="table-scroll"><table class="rtable" id="rtable"></table></div>
+    </div>
+
+    <details>
+      <summary>How this works</summary>
+      <ul>
+        <li>For each of the 10,000 simulated projects, every risk is rolled like a dice. If its chance is 9%, it happens in about 9 of every 100 projects.</li>
+        <li>When a risk happens, its cost and delay are picked between your low and high values, and land most often near your most likely value.</li>
+        <li>Costs and delays are added up across all risks that happened. Delays add up one after another.</li>
+        <li>Yearly chances are scaled to your timeline, so a 32% chance per year becomes about 9% over 90 days.</li>
+      </ul>
+    </details>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- simulation core ---------- */
+  //SIM-START
+  function parseValue(x) {
+    if (typeof x === "number") return isFinite(x) ? x : NaN;
+    var t = String(x == null ? "" : x).trim().toLowerCase().replace(/[$,\s]/g, "");
+    var m = t.match(/^(-?[\d.]+)(k|m|b)?/);
+    if (!m) return NaN;
+    var v = parseFloat(m[1]);
+    if (isNaN(v)) return NaN;
+    var mult = { k: 1e3, m: 1e6, b: 1e9 }[m[2]] || 1;
+    v *= mult;
+    if (/%$/.test(t)) v /= 100;
+    return v;
+  }
+  function parseChance(x) {
+    var v = parseValue(x);
+    if (isNaN(v)) return NaN;
+    return v > 1 ? v / 100 : v;
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function tri(u, lo, mode, hi) {
+    if (hi <= lo) return lo;
+    if (mode < lo) mode = lo;
+    if (mode > hi) mode = hi;
+    var fc = (mode - lo) / (hi - lo);
+    return u < fc ? lo + Math.sqrt(u * (hi - lo) * (mode - lo)) : hi - Math.sqrt((1 - u) * (hi - lo) * (hi - mode));
+  }
+  function simulate(risks, opts) {
+    var n = risks.length, T = opts.trials;
+    var rand = mulberry32(opts.seed);
+    var probs = risks.map(function (r) {
+      return opts.basisDays ? 1 - Math.pow(1 - r.p, opts.deadline / opts.basisDays) : r.p;
+    });
+    var totalCost = new Float64Array(T), totalDays = new Float64Array(T);
+    var count = new Array(n).fill(0), costSum = new Array(n).fill(0), timeSum = new Array(n).fill(0);
+    for (var t = 0; t < T; t++) {
+      var c = 0, d = 0;
+      for (var i = 0; i < n; i++) {
+        if (rand() < probs[i]) {
+          var r = risks[i];
+          var cc = tri(rand(), r.cmin, r.cmode, r.cmax);
+          var dd = tri(rand(), r.tmin, r.tmode, r.tmax);
+          c += cc; d += dd; count[i]++; costSum[i] += cc; timeSum[i] += dd;
+        }
+      }
+      totalCost[t] = c; totalDays[t] = d;
+    }
+    return { totalCost: totalCost, totalDays: totalDays, probs: probs, count: count, costSum: costSum, timeSum: timeSum, trials: T };
+  }
+  function sortedCopy(a) { var b = Float64Array.from(a); b.sort(); return b; }
+  function pctile(sorted, q) { return sorted[Math.min(sorted.length - 1, Math.floor(q / 100 * sorted.length))]; }
+  function mean(a) { var s = 0; for (var i = 0; i < a.length; i++) s += a[i]; return s / a.length; }
+  function summarize(res, budget, deadline) {
+    var T = res.trials, over = 0, late = 0, either = 0, none = 0;
+    for (var i = 0; i < T; i++) {
+      var o = res.totalCost[i] > budget, l = res.totalDays[i] > deadline;
+      if (o) over++; if (l) late++; if (o || l) either++;
+      if (res.totalCost[i] === 0 && res.totalDays[i] === 0) none++;
+    }
+    var sc = sortedCopy(res.totalCost), sd = sortedCopy(res.totalDays);
+    return {
+      pOver: over / T, pLate: late / T, pEither: either / T, pNone: none / T,
+      sc: sc, sd: sd,
+      cost: { mean: mean(res.totalCost), mid: pctile(sc, 50), bad: pctile(sc, 90), max: sc[T - 1] },
+      days: { mean: mean(res.totalDays), mid: pctile(sd, 50), bad: pctile(sd, 90), max: sd[T - 1] }
+    };
+  }
+  //SIM-END
+
+  /* ---------- formatting ---------- */
+  function money(x) {
+    if (x === 0) return "$0";
+    if (Math.abs(x) >= 1e6) return "$" + (x / 1e6).toFixed(1) + "M";
+    if (Math.abs(x) >= 1e3) return "$" + Math.round(x / 1e3).toLocaleString() + "K";
+    return "$" + Math.round(x);
+  }
+  function days(x) { return Math.round(x).toLocaleString() + (Math.round(x) === 1 ? " day" : " days"); }
+  function pct(x) { return Math.round(x * 100) + "%"; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function niceStep(raw) {
+    var p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  }
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ---------- risk table ---------- */
+  var CANVAS = [
+    ["Ransomware Account Takeover", "32", "10K", "310K", "2.1M", "2", "10", "21"],
+    ["Ransomware Customer Data Theft", "24", "240K", "3.8M", "9.2M", "14", "64", "241"],
+    ["Supply-Chain attack", "28", "180K", "1.4M", "6.7M", "20", "75", "267"],
+    ["Ransomware / Operational Shutdown", "18", "350K", "4.5M", "8.1M", "3", "11", "24"],
+    ["Credential Phishing", "48", "15K", "280K", "3.1M", "1", "6", "14"]
+  ];
+  var tbody = $("regbody");
+  function addRow(vals) {
+    vals = vals || ["", "", "", "", "", "", "", ""];
+    var tr = document.createElement("tr");
+    var labels = ["Risk name", "Chance in percent", "Cost low", "Cost most likely", "Cost high", "Delay low in days", "Delay most likely in days", "Delay high in days"];
+    var html = "";
+    for (var i = 0; i < 8; i++) {
+      html += '<td' + (i === 0 ? ' class="name"' : '') + '><input type="text" aria-label="' + labels[i] + '" value="' + esc(vals[i]) + '"' + (i === 0 ? ' placeholder="Name of the risk"' : ' inputmode="decimal"') + '></td>';
+    }
+    html += '<td><button type="button" class="icon-btn" aria-label="Remove this risk" title="Remove">&times;</button></td>';
+    tr.innerHTML = html;
+    tr.querySelector(".icon-btn").addEventListener("click", function () { tr.remove(); });
+    tbody.appendChild(tr);
+  }
+  function loadRows(rows) { tbody.innerHTML = ""; rows.forEach(addRow); }
+  function readRisks() {
+    var out = [], errors = [];
+    Array.prototype.forEach.call(tbody.rows, function (tr, idx) {
+      tr.classList.remove("invalid");
+      var v = Array.prototype.map.call(tr.querySelectorAll("input"), function (i) { return i.value.trim(); });
+      if (v.every(function (x) { return x === ""; })) return;
+      var name = v[0] || ("Row " + (idx + 1));
+      var p = parseChance(v[1]);
+      var nums = v.slice(2).map(parseValue);
+      var bad = null;
+      if (isNaN(p) || p < 0 || p > 1) bad = "needs a chance between 0 and 100";
+      else if (nums.some(isNaN)) bad = "has a cost or delay that is blank or not a number";
+      else if (nums.some(function (x) { return x < 0; })) bad = "has a negative value";
+      else if (!(nums[0] <= nums[1] && nums[1] <= nums[2])) bad = "needs cost Low ≤ Most likely ≤ High";
+      else if (!(nums[3] <= nums[4] && nums[4] <= nums[5])) bad = "needs delay Low ≤ Most likely ≤ High";
+      if (bad) { tr.classList.add("invalid"); errors.push(name + " " + bad + "."); return; }
+      out.push({ name: name, p: p, cmin: nums[0], cmode: nums[1], cmax: nums[2], tmin: nums[3], tmode: nums[4], tmax: nums[5] });
+    });
+    return { risks: out, errors: errors };
+  }
+
+  /* ---------- results rendering ---------- */
+  function setMsg(text, err) { var m = $("msg"); m.textContent = text; m.className = "msg " + (err ? "err" : "ok"); }
+
+  function renderHeadline(s, budget, deadline, T) {
+    $("headline").innerHTML = "Out of " + T.toLocaleString() + " simulated versions of this project, <strong>" + pct(s.pOver) +
+      "</strong> went over the " + money(budget) + " budget and <strong>" + pct(s.pLate) + "</strong> went past " + days(deadline) +
+      ". In " + pct(s.pNone) + " of them, no risk happened at all.";
+    var rows = [["Over budget", s.pOver, "var(--bad)"], ["Over the deadline", s.pLate, "var(--warn)"], ["Over either", s.pEither, "var(--bad)"]];
+    $("hbars").innerHTML = rows.map(function (r) {
+      var w = Math.max(0, Math.min(100, r[1] * 100));
+      return '<div class="hbar"><div class="lbl">' + r[0] + '</div><div class="track"><div class="fill" style="width:' + w + '%;background:' + r[2] + '"></div>' +
+        '<div class="val" style="color:' + (w > 14 ? "#fff" : "var(--ink)") + ';' + (w > 14 ? "" : "padding-left:calc(" + w + "% + 10px)") + '">' + pct(r[1]) + '</div></div></div>';
+    }).join("");
+    $("stats").innerHTML = [
+      ["Average project", s.cost.mean, s.days.mean],
+      ["Typical project (the middle one)", s.cost.mid, s.days.mid],
+      ["Bad case (1 in 10 is worse)", s.cost.bad, s.days.bad],
+      ["Worst case in the simulation", s.cost.max, s.days.max]
+    ].map(function (r) {
+      return '<div class="stat"><div class="k">' + r[0] + '</div><div class="v">' + money(r[1]) + '</div><div class="d">' + days(r[2]) + ' of delay</div></div>';
+    }).join("");
+  }
+
+  function drawCurve(svgId, sorted, limit, fmt, unitWord) {
+    var W = 560, H = 320, L = 52, R = 14, Tp = 14, B = 44;
+    var iw = W - L - R, ih = H - Tp - B, n = sorted.length;
+    var xmax = Math.max(sorted[n - 1], limit * 1.2, 1);
+    var xs = function (x) { return L + (x / xmax) * iw; };
+    var ys = function (y) { return Tp + (1 - y) * ih; };
+    var g = "";
+    for (var yv = 0; yv <= 100; yv += 25) g += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + ys(yv / 100) + '" y2="' + ys(yv / 100) + '"></line><text x="' + (L - 8) + '" y="' + (ys(yv / 100) + 4) + '" text-anchor="end">' + yv + '%</text>';
+    var step = niceStep(xmax / 5);
+    for (var xv = 0; xv <= xmax + 1e-9; xv += step) g += '<text x="' + xs(xv) + '" y="' + (H - B + 20) + '" text-anchor="middle">' + fmt(xv) + '</text>';
+    // curve, sampled
+    var pts = [], k = 240;
+    for (var i = 0; i <= k; i++) {
+      var idx = Math.min(n - 1, Math.floor(i / k * (n - 1)));
+      pts.push(xs(sorted[idx]).toFixed(1) + "," + ys((idx + 1) / n).toFixed(1));
+    }
+    var within = 0; // fraction <= limit
+    var lo = 0, hi = n; while (lo < hi) { var mid = (lo + hi) >> 1; if (sorted[mid] <= limit) lo = mid + 1; else hi = mid; }
+    within = lo / n;
+    var lx = xs(limit), ly = ys(within);
+    var annX = Math.min(lx + 12, W - R - 150);
+    var annY = Math.min(ly + 34, H - B - 22);
+    var label1 = Math.round(within * 100) + "% of projects", label2 = "stay within the limit";
+    g += '<polyline class="curve" points="' + pts.join(" ") + '"></polyline>' +
+      '<line class="limit" x1="' + lx + '" x2="' + lx + '" y1="' + Tp + '" y2="' + (H - B) + '"></line>' +
+      '<circle class="dot" cx="' + lx + '" cy="' + ly + '" r="5"></circle>' +
+      '<text class="ann" x="' + annX + '" y="' + annY + '">' + label1 + '</text><text class="ann" x="' + annX + '" y="' + (annY + 16) + '">' + label2 + '</text>' +
+      '<text x="' + (L + iw / 2) + '" y="' + (H - 4) + '" text-anchor="middle">' + unitWord + '</text>';
+    $(svgId).innerHTML = g;
+  }
+
+  function renderTornado(res, risks) {
+    var vals = risks.map(function (r, i) { return { name: r.name, v: res.costSum[i] / res.trials }; });
+    var total = vals.reduce(function (a, b) { return a + b.v; }, 0) || 1;
+    vals.sort(function (a, b) { return b.v - a.v; });
+    var mx = vals[0] ? vals[0].v || 1 : 1;
+    $("tornado").innerHTML = vals.map(function (x) {
+      return '<div class="trow"><div class="nm">' + esc(x.name) + '</div><div class="bw"><div class="b" style="width:calc(' + (x.v / mx * 100).toFixed(1) + '% * 0.7)"></div><div class="t">' + money(x.v) + ' (' + pct(x.v / total) + ')</div></div></div>';
+    }).join("");
+  }
+
+  function renderRiskTable(res, risks) {
+    var rows = risks.map(function (r, i) {
+      return { name: r.name, p: res.probs[i], c: res.count[i], cost: res.costSum[i] / res.trials, time: res.timeSum[i] / res.trials };
+    }).sort(function (a, b) { return b.cost - a.cost; });
+    $("rtable").innerHTML = '<thead><tr><th>Risk</th><th>Chance in this project</th><th>Times it happened</th><th>Average cost added</th><th>Average delay added</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td>' + esc(r.name) + '</td><td class="n">' + (r.p * 100).toFixed(1) + '%</td><td class="n">' + r.c.toLocaleString() + ' of ' + res.trials.toLocaleString() + '</td><td class="n">' + money(r.cost) + '</td><td class="n">' + r.time.toFixed(1) + ' days</td></tr>';
+      }).join("") + '</tbody>';
+  }
+
+  function run() {
+    var b = parseValue($("budget").value), d = parseValue($("deadline").value);
+    if (isNaN(b) || b <= 0) { setMsg("Enter a budget greater than zero, for example 1,000,000.", true); return; }
+    if (isNaN(d) || d <= 0) { setMsg("Enter a timeline in days greater than zero, for example 90.", true); return; }
+    var read = readRisks();
+    if (read.errors.length) { setMsg(read.errors.join(" "), true); return; }
+    if (!read.risks.length) { setMsg("Add at least one risk, or load the Canvas example.", true); return; }
+    var res = simulate(read.risks, { trials: 10000, budget: b, deadline: d, basisDays: parseInt($("basis").value, 10), seed: 42 });
+    var s = summarize(res, b, d);
+    $("results").hidden = false;
+    renderHeadline(s, b, d, res.trials);
+    $("how-cost").textContent = "Find your budget (red line). The dot shows the share of simulated projects that cost that much or less.";
+    $("how-time").textContent = "Find your deadline (red line). The dot shows the share of simulated projects delayed that long or less.";
+    drawCurve("sc-cost", s.sc, b, money, "Total cost of risks");
+    drawCurve("sc-time", s.sd, d, function (x) { return Math.round(x).toLocaleString(); }, "Total delay (days)");
+    renderTornado(res, read.risks);
+    renderRiskTable(res, read.risks);
+    setMsg("Simulated " + res.trials.toLocaleString() + " projects using " + read.risks.length + " risk" + (read.risks.length === 1 ? "" : "s") + ".", false);
+  }
+
+  /* ---------- upload ---------- */
+  function handleFile(file) {
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        var wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+        var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: true });
+        var start = -1;
+        for (var i = 0; i < rows.length; i++) if (String(rows[i][0]).trim().toLowerCase() === "threat/risk name") { start = i; break; }
+        if (start < 0) { setMsg("Could not find the 'Threat/Risk Name' header row. Use the Risk Register template layout.", true); return; }
+        var out = [];
+        for (var j = start + 1; j < rows.length; j++) {
+          var r = rows[j];
+          if (String(r[0]).trim() === "") continue;
+          var cells = [r[0]];
+          for (var c = 1; c <= 6; c++) cells.push(String(r[c]).trim());
+          var p = r[7]; 
+          var pv = parseChance(p);
+          cells.splice(1, 0, isNaN(pv) ? "" : String(Math.round(pv * 10000) / 100));
+          out.push(cells.map(function (x) { return String(x).replace(/\s*days?$/i, ""); }));
+        }
+        if (!out.length) { setMsg("No risks found under the header row.", true); return; }
+        loadRows(out);
+        setMsg("Loaded " + out.length + " risks from " + file.name + ". Check the table, then run the simulation.", false);
+        run();
+      } catch (err) { setMsg("Could not read that file. Try saving it as .xlsx or .csv and upload again.", true); }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  /* ---------- wire up ---------- */
+  $("add").addEventListener("click", function () { addRow(); var last = tbody.lastElementChild; if (last) last.querySelector("input").focus(); });
+  $("example").addEventListener("click", function () { $("budget").value = "1,000,000"; $("deadline").value = "90"; $("basis").value = "365"; loadRows(CANVAS); run(); });
+  $("clear").addEventListener("click", function () { loadRows([]); addRow(); setMsg("Table cleared. Add your risks, then run the simulation.", false); });
+  $("run").addEventListener("click", run);
+  $("file").addEventListener("change", function (e) { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ""; });
+  ["budget", "deadline", "basis"].forEach(function (id) { $(id).addEventListener("change", run); });
+
+  loadRows(CANVAS);
+  run();
+})();
+</script>
+</body>
+</html>
