@@ -31,14 +31,14 @@ Values like `310000`, `310K` and `2.1M` all work.
 
 ## Python and Colab version
 
-`Monte_Carlo_Risk_Simulation.ipynb` is the same simulation in Python for Google Colab. Upload your risk register, set the budget and timeline in the first cell, and click **Runtime > Run all**.
+`Monte_Carlo_Simulation.ipynb` is the same simulation in Python for Google Colab. Upload your risk register, set the budget and timeline in the first cell, and click **Runtime > Run all**.
 
 ## Files
 
 | File | Purpose |
 |---|---|
 | `index.html` | The web simulator (no installation needed) |
-| `Monte_Carlo_Risk_Simulation.ipynb` | Python version for Google Colab |
+| `Monte_Carlo_Simulation.ipynb` | Python version for Google Colab |
 | `Risk_Register_Template.xlsx` | Blank risk register template |
 
 ## Example
