@@ -39,6 +39,8 @@
   --invalid: #3a1f22; color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
+::placeholder { color: var(--muted); opacity: 0.6; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
 .wrap { max-width: 1040px; margin: 0 auto; padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 36px; }
 h1 { font-size: clamp(26px, 5vw, 36px); line-height: 1.15; margin: 0 0 8px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
@@ -132,21 +134,30 @@ details ul { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
   <header>
     <div class="eyebrow">Monte Carlo risk simulation</div>
     <h1>Project Risk Simulator</h1>
-    <p class="lede">Enter your project's budget, deadline and risks. The simulator plays the project out 10,000 times and shows how often it goes over budget or over time.</p>
+    <p class="lede">Enter your project's budget, planned cost, deadline and risks. The simulator plays the project out 10,000 times and shows how often the risks use up more than your reserve of money or time.</p>
   </header>
 
   <section aria-labelledby="h-project">
     <div>
       <h2 id="h-project">1. Your project</h2>
-      <p class="sub">Change these to match any project. The example below is the Canvas data breach scenario.</p>
+      <p class="sub">Fill in your project, or click "Load Canvas example" below to see a sample.</p>
     </div>
     <div class="settings">
-      <label class="field" for="budget">Budget ($)
-        <input id="budget" type="text" inputmode="numeric" value="1,000,000" class="num">
+      <label class="field" for="budget">Project budget ($)
+        <input id="budget" type="text" inputmode="numeric" placeholder="1,000,000" class="num">
+        <small>Everything you can spend</small>
       </label>
-      <label class="field" for="deadline">Timeline (days)
-        <input id="deadline" type="text" inputmode="numeric" value="90" class="num">
+      <label class="field" for="planned">Planned cost of the work ($)
+        <input id="planned" type="text" inputmode="numeric" placeholder="700,000" class="num">
+        <small>What the work costs if no risk happens. Use 0 to test risks alone.</small>
+      </label>
+      <label class="field" for="deadline">Project deadline (days)
+        <input id="deadline" type="text" inputmode="numeric" placeholder="90" class="num">
         <small>3 months is about 90 days</small>
+      </label>
+      <label class="field" for="planneddays">Planned time for the work (days)
+        <input id="planneddays" type="text" inputmode="numeric" placeholder="60" class="num">
+        <small>How long the work takes if no risk happens</small>
       </label>
       <label class="field" for="basis">The chances in my table are
         <select id="basis">
@@ -155,6 +166,7 @@ details ul { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
         </select>
       </label>
     </div>
+    <p class="sub" id="reserve" aria-live="polite"></p>
   </section>
 
   <section aria-labelledby="h-risks">
@@ -223,7 +235,8 @@ details ul { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
         <li>For each of the 10,000 simulated projects, every risk is rolled like a dice. If its chance is 9%, it happens in about 9 of every 100 projects.</li>
         <li>When a risk happens, its cost and delay are picked between your low and high values, and land most often near your most likely value.</li>
         <li>Costs and delays are added up across all risks that happened. Delays add up one after another.</li>
-        <li>Yearly chances are scaled to your timeline, so a 32% chance per year becomes about 9% over 90 days.</li>
+        <li>Yearly chances are scaled to your deadline, so a 32% chance per year becomes about 9% over 90 days.</li>
+        <li>Your budget minus the planned cost of the work is the contingency reserve. The same goes for time. A result counts as "over" when the risks use up more than that reserve.</li>
       </ul>
     </details>
   </section>
@@ -374,9 +387,9 @@ details ul { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
 
   function renderHeadline(s, budget, deadline, T) {
     $("headline").innerHTML = "Out of " + T.toLocaleString() + " simulated versions of this project, <strong>" + pct(s.pOver) +
-      "</strong> went over the " + money(budget) + " budget and <strong>" + pct(s.pLate) + "</strong> went past " + days(deadline) +
-      ". In " + pct(s.pNone) + " of them, no risk happened at all.";
-    var rows = [["Over budget", s.pOver, "var(--bad)"], ["Over the deadline", s.pLate, "var(--warn)"], ["Over either", s.pEither, "var(--bad)"]];
+      "</strong> cost more than the " + money(budget) + " contingency reserve and <strong>" + pct(s.pLate) + "</strong> delayed the work by more than the " + Math.round(deadline) +
+      "-day time reserve. In " + pct(s.pNone) + " of them, no risk happened at all.";
+    var rows = [["Over cost reserve", s.pOver, "var(--bad)"], ["Over time reserve", s.pLate, "var(--warn)"], ["Over either", s.pEither, "var(--bad)"]];
     $("hbars").innerHTML = rows.map(function (r) {
       var w = Math.max(0, Math.min(100, r[1] * 100));
       return '<div class="hbar"><div class="lbl">' + r[0] + '</div><div class="track"><div class="fill" style="width:' + w + '%;background:' + r[2] + '"></div>' +
@@ -443,21 +456,38 @@ details ul { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
       }).join("") + '</tbody>';
   }
 
+  function showReserve() {
+    var b = parseValue($("budget").value), d = parseValue($("deadline").value);
+    var pc = $("planned").value.trim() === "" ? 0 : parseValue($("planned").value);
+    var pd = $("planneddays").value.trim() === "" ? 0 : parseValue($("planneddays").value);
+    var el = $("reserve");
+    if ([b, d, pc, pd].some(isNaN) || pc >= b || pd >= d) { el.textContent = ""; return; }
+    el.innerHTML = "Contingency reserve for risks: <strong>" + money(b - pc) + "</strong> (budget minus planned cost) and <strong>" + days(d - pd) + "</strong> (deadline minus planned time).";
+  }
+
   function run() {
     var b = parseValue($("budget").value), d = parseValue($("deadline").value);
-    if (isNaN(b) || b <= 0) { setMsg("Enter a budget greater than zero, for example 1,000,000.", true); return; }
-    if (isNaN(d) || d <= 0) { setMsg("Enter a timeline in days greater than zero, for example 90.", true); return; }
+    var pc = $("planned").value.trim() === "" ? 0 : parseValue($("planned").value);
+    var pd = $("planneddays").value.trim() === "" ? 0 : parseValue($("planneddays").value);
+    if (isNaN(b) || b <= 0) { setMsg("Enter a project budget greater than zero, for example 1,000,000.", true); return; }
+    if (isNaN(d) || d <= 0) { setMsg("Enter a project deadline in days greater than zero, for example 90.", true); return; }
+    if (isNaN(pc) || pc < 0) { setMsg("Enter the planned cost of the work as zero or more, for example 700,000.", true); return; }
+    if (isNaN(pd) || pd < 0) { setMsg("Enter the planned time for the work as zero or more days, for example 60.", true); return; }
+    if (pc >= b) { setMsg("The planned cost (" + money(pc) + ") uses up the whole budget (" + money(b) + "), so there is no reserve for risks. Lower the planned cost or raise the budget.", true); return; }
+    if (pd >= d) { setMsg("The planned time (" + days(pd) + ") uses up the whole deadline (" + days(d) + "), so there is no time reserve for risks. Lower the planned time or raise the deadline.", true); return; }
+    var rc = b - pc, rd = d - pd;
+    showReserve();
     var read = readRisks();
     if (read.errors.length) { setMsg(read.errors.join(" "), true); return; }
     if (!read.risks.length) { setMsg("Add at least one risk, or load the Canvas example.", true); return; }
     var res = simulate(read.risks, { trials: 10000, budget: b, deadline: d, basisDays: parseInt($("basis").value, 10), seed: 42 });
-    var s = summarize(res, b, d);
+    var s = summarize(res, rc, rd);
     $("results").hidden = false;
-    renderHeadline(s, b, d, res.trials);
-    $("how-cost").textContent = "Find your budget (red line). The dot shows the share of simulated projects that cost that much or less.";
-    $("how-time").textContent = "Find your deadline (red line). The dot shows the share of simulated projects delayed that long or less.";
-    drawCurve("sc-cost", s.sc, b, money, "Total cost of risks");
-    drawCurve("sc-time", s.sd, d, function (x) { return Math.round(x).toLocaleString(); }, "Total delay (days)");
+    renderHeadline(s, rc, rd, res.trials);
+    $("how-cost").textContent = "Find your cost reserve (red line). The dot shows the share of simulated projects where risks cost that much or less.";
+    $("how-time").textContent = "Find your time reserve (red line). The dot shows the share of simulated projects where risks delay the work that long or less.";
+    drawCurve("sc-cost", s.sc, rc, money, "Total cost of risks");
+    drawCurve("sc-time", s.sd, rd, function (x) { return Math.round(x).toLocaleString(); }, "Total delay (days)");
     renderTornado(res, read.risks);
     renderRiskTable(res, read.risks);
     setMsg("Simulated " + res.trials.toLocaleString() + " projects using " + read.risks.length + " risk" + (read.risks.length === 1 ? "" : "s") + ".", false);
@@ -479,7 +509,7 @@ details ul { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
           if (String(r[0]).trim() === "") continue;
           var cells = [r[0]];
           for (var c = 1; c <= 6; c++) cells.push(String(r[c]).trim());
-          var p = r[7]; 
+          var p = r[7]; // fraction (0.32) or percent
           var pv = parseChance(p);
           cells.splice(1, 0, isNaN(pv) ? "" : String(Math.round(pv * 10000) / 100));
           out.push(cells.map(function (x) { return String(x).replace(/\s*days?$/i, ""); }));
@@ -495,14 +525,19 @@ details ul { margin: 10px 0 0; padding-left: 20px; display: flex; flex-direction
 
   /* ---------- wire up ---------- */
   $("add").addEventListener("click", function () { addRow(); var last = tbody.lastElementChild; if (last) last.querySelector("input").focus(); });
-  $("example").addEventListener("click", function () { $("budget").value = "1,000,000"; $("deadline").value = "90"; $("basis").value = "365"; loadRows(CANVAS); run(); });
+  $("example").addEventListener("click", function () { $("budget").value = "1,000,000"; $("planned").value = "700,000"; $("deadline").value = "90"; $("planneddays").value = "60"; $("basis").value = "365"; loadRows(CANVAS); run(); });
   $("clear").addEventListener("click", function () { loadRows([]); addRow(); setMsg("Table cleared. Add your risks, then run the simulation.", false); });
   $("run").addEventListener("click", run);
   $("file").addEventListener("change", function (e) { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ""; });
-  ["budget", "deadline", "basis"].forEach(function (id) { $(id).addEventListener("change", run); });
+  ["budget", "planned", "deadline", "planneddays", "basis"].forEach(function (id) {
+    $(id).addEventListener("change", function () { if (!$("results").hidden) run(); });
+    $(id).addEventListener("input", showReserve);
+  });
 
-  loadRows(CANVAS);
-  run();
+  loadRows([]);
+  addRow();
+  showReserve();
+  setMsg("Enter your project and risks, then click Run simulation. Or load the Canvas example to see how it works.", false);
 })();
 </script>
 </body>
