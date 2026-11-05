@@ -43,7 +43,7 @@ Values like `310000`, `310K` and `2.1M` all work.
 
 ## Example
 
-The page loads with a sample scenario based on the 2026 Canvas data breach: a $1,000,000 budget, a 3-month (90-day) timeline, and five cyber risks.
+The page loads with a sample scenario based on the 2026 Canvas data breach: a $1,000,000 budget, a 3-month (90-day) timeline, and seven cyber risks.
 
 ## Notes
 
