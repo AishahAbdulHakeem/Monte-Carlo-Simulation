@@ -37,7 +37,7 @@ Values like `310000`, `310K` and `2.1M` all work.
 
 | File | Purpose |
 |---|---|
-| `index.html` | The web simulator (no installation needed) |
+| `nontechnical_report.html` | The web simulator (no installation needed) |
 | `Monte_Carlo_Simulation.ipynb` | Python version for Google Colab |
 | `Risk_Register_Template.xlsx` | Blank risk register template |
 
